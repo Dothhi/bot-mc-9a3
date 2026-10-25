@@ -1,11 +1,15 @@
 {
   "name": "bot-mc",
   "version": "1.0.0",
+  "description": "Minecraft AFK Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "mineflayer": "^4.23.0"
+    "mineflayer": "^4.20.0"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }
