@@ -7,17 +7,16 @@ const CONFIG = {
   username: 'Bot_AFK_247',
   version: '1.8',
   checkTimeoutInterval: 60_000,
-  reconnectDelay: 15_000, // Tăng lên 15 giây để chờ server kịp mở lại khi bị ECONNREFUSED
+  reconnectDelay: 15_000, // Đợi 15 giây trước khi thử kết nối lại
 };
 
 let bot = null;
 let antiAfkInterval = null;
-let reconnecting = false;
 let reconnectTimeout = null;
 
 function createBot() {
-  if (reconnecting) return;
-  reconnecting = true;
+  // Dọn dẹp bot cũ trước khi tạo kết nối mới
+  cleanup();
 
   console.log('Đang kết nối tới server...');
 
@@ -31,13 +30,11 @@ function createBot() {
     });
   } catch (err) {
     console.log('Lỗi khởi tạo bot:', err.message);
-    reconnecting = false;
     scheduleReconnect();
     return;
   }
 
   bot.once('spawn', () => {
-    reconnecting = false;
     console.log('Bot đã vào game thành công!');
 
     // Anti-AFK
@@ -64,9 +61,7 @@ function createBot() {
             if (bot) bot.setControlState('forward', false);
           }, 400);
         }
-      } catch (e) {
-        // Bỏ qua lỗi nhỏ khi thực hiện anti-afk lúc bot đang mất kết nối
-      }
+      } catch (e) {}
     }, 12_000);
   });
 
@@ -76,11 +71,15 @@ function createBot() {
 
   bot.on('error', (err) => {
     console.log('Lỗi kết nối:', err.message);
+    // Khi gặp lỗi mạng nặng (như ECONNREFUSED), sự kiện 'end' có thể không chạy. 
+    // Do đó ta chủ động lên lịch kết nối lại ngay tại đây nếu bot chưa kịp spawn.
+    if (!bot?.entity) {
+      scheduleReconnect();
+    }
   });
 
   bot.on('end', (reason) => {
-    console.log(`Mất kết nối (Lý do: ${reason}), đang chuẩn bị vào lại...`);
-    cleanup();
+    console.log(`Mất kết nối (Lý do: ${reason || 'Không xác định'}), đang chuẩn bị vào lại...`);
     scheduleReconnect();
   });
 }
@@ -90,35 +89,43 @@ function cleanup() {
     clearInterval(antiAfkInterval);
     antiAfkInterval = null;
   }
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
   if (bot) {
     try {
       bot.removeAllListeners();
       if (bot._client) {
         bot._client.removeAllListeners();
       }
+      bot.quit();
     } catch (e) {}
     bot = null;
   }
-  reconnecting = false;
 }
 
 function scheduleReconnect() {
-  if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  // Tránh việc gọi nhiều lịch hẹn trùng nhau
+  if (reconnectTimeout) return;
+
+  console.log(`Sẽ thử kết nối lại sau ${CONFIG.reconnectDelay / 1000} giây...`);
   reconnectTimeout = setTimeout(() => {
+    reconnectTimeout = null;
     createBot();
   }, CONFIG.reconnectDelay);
 }
 
-// Bắt các lỗi toàn cục để ứng dụng trên Render không bị sập (crash)
+// Bắt lỗi toàn cục để app không bị sập trên Render
 process.on('uncaughtException', (err) => {
-  console.log('Lỗi chưa bắt được (Uncaught Exception):', err.message);
+  console.log('Lỗi chưa bắt được:', err.message);
 });
 
 process.on('unhandledRejection', (reason) => {
   console.log('Promise bị từ chối:', reason);
 });
 
-// Keep-alive server cho Render (tránh bị ngủ đông nếu dùng bản free)
+// Keep-alive server cho Render
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is alive');
