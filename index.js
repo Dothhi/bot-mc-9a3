@@ -5,7 +5,7 @@ const config = {
   host: '9a3.joinmc.world',
   port: 49414,
   username: 'Bot_AFK_247',
-  version: "1.8",          // hoặc '1.8'
+  version: '1.8',          // hoặc '1.8'
 };
 
 function createBot() {
