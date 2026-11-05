@@ -15,7 +15,6 @@ let antiAfkInterval = null;
 let reconnectTimeout = null;
 
 function createBot() {
-  // Dọn dẹp bot cũ trước khi tạo kết nối mới
   cleanup();
 
   console.log('Đang kết nối tới server...');
@@ -27,6 +26,10 @@ function createBot() {
       username: CONFIG.username,
       version: CONFIG.version,
       checkTimeoutInterval: CONFIG.checkTimeoutInterval,
+      // === CẤU HÌNH TỐI ƯU CHUNK & GIẢM TẢI RAM ===
+      viewDistance: 'tiny',        // Ép bot chỉ tải 2 chunks xung quanh
+      physicsEnabled: false,       // Tắt tính năng tính toán vật lý (giúp giảm tải CPU cực lớn)
+      loadInternalPlugins: true,   // Vẫn giữ plugin nội bộ nhưng giới hạn data
     });
   } catch (err) {
     console.log('Lỗi khởi tạo bot:', err.message);
@@ -37,32 +40,30 @@ function createBot() {
   bot.once('spawn', () => {
     console.log('Bot đã vào game thành công!');
 
-    // Anti-AFK
+    // Tối ưu hóa bộ nhớ: Xóa bỏ dữ liệu về các thực thể khác nếu server gửi về
+    if (bot.entities) bot.entities = {};
+
+    // Anti-AFK an toàn ở độ cao 300 (Không dùng di chuyển/nhảy để tránh lỗi Anticheat khi tắt Physics)
     if (antiAfkInterval) clearInterval(antiAfkInterval);
 
     antiAfkInterval = setInterval(() => {
-      if (!bot || !bot.entity) return;
+      if (!bot) return;
 
       try {
-        // Nhảy
-        bot.setControlState('jump', true);
-        setTimeout(() => {
-          if (bot) bot.setControlState('jump', false);
-        }, 300);
+        // Nhìn ngẫu nhiên (Hành động này cực nhẹ, không kích hoạt Anticheat)
+        const yaw = (Math.random() - 0.5) * 3.14;
+        const pitch = (Math.random() - 0.5) * 1.0;
+        bot.look(yaw, pitch, true);
 
-        // Nhìn xung quanh một chút
-        const yaw = bot.entity.yaw + (Math.random() - 0.5) * 1.2;
-        bot.look(yaw, bot.entity.pitch, true);
-
-        // Thỉnh thoảng đi tới 1 bước
-        if (Math.random() < 0.3) {
-          bot.setControlState('forward', true);
-          setTimeout(() => {
-            if (bot) bot.setControlState('forward', false);
-          }, 400);
+        // Thay vì di chuyển, gửi một lệnh/tin nhắn ẩn hoặc chat chấm (.) để giữ kết nối
+        // Thích hợp nhất là gõ một lệnh vô hại như /rules hoặc /help
+        if (Math.random() < 0.5) {
+          bot.chat('/help'); 
+        } else {
+          bot.chat('.'); // Hoặc một dấu chấm để reset thời gian AFK của server
         }
       } catch (e) {}
-    }, 12_000);
+    }, 20_000); // 20 giây thực hiện một lần là đủ để chống AFK
   });
 
   bot.on('kicked', (reason) => {
@@ -71,8 +72,6 @@ function createBot() {
 
   bot.on('error', (err) => {
     console.log('Lỗi kết nối:', err.message);
-    // Khi gặp lỗi mạng nặng (như ECONNREFUSED), sự kiện 'end' có thể không chạy. 
-    // Do đó ta chủ động lên lịch kết nối lại ngay tại đây nếu bot chưa kịp spawn.
     if (!bot?.entity) {
       scheduleReconnect();
     }
@@ -106,7 +105,6 @@ function cleanup() {
 }
 
 function scheduleReconnect() {
-  // Tránh việc gọi nhiều lịch hẹn trùng nhau
   if (reconnectTimeout) return;
 
   console.log(`Sẽ thử kết nối lại sau ${CONFIG.reconnectDelay / 1000} giây...`);
@@ -133,5 +131,4 @@ http.createServer((req, res) => {
   console.log('Keep-alive server đang chạy trên cổng', process.env.PORT || 10000);
 });
 
-// Khởi chạy bot lần đầu
 createBot();
