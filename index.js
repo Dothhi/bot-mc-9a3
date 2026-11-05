@@ -42,30 +42,6 @@ function createBot() {
 
     // Tối ưu hóa bộ nhớ: Xóa bỏ dữ liệu về các thực thể khác nếu server gửi về
     if (bot.entities) bot.entities = {};
-
-    // Anti-AFK an toàn ở độ cao 300 (Không dùng di chuyển/nhảy để tránh lỗi Anticheat khi tắt Physics)
-    if (antiAfkInterval) clearInterval(antiAfkInterval);
-
-    antiAfkInterval = setInterval(() => {
-      if (!bot) return;
-
-      try {
-        // Nhìn ngẫu nhiên (Hành động này cực nhẹ, không kích hoạt Anticheat)
-        const yaw = (Math.random() - 0.5) * 3.14;
-        const pitch = (Math.random() - 0.5) * 1.0;
-        bot.look(yaw, pitch, true);
-
-        // Thay vì di chuyển, gửi một lệnh/tin nhắn ẩn hoặc chat chấm (.) để giữ kết nối
-        // Thích hợp nhất là gõ một lệnh vô hại như /rules hoặc /help
-        if (Math.random() < 0.5) {
-          bot.chat('/help'); 
-        } else {
-          bot.chat('.'); // Hoặc một dấu chấm để reset thời gian AFK của server
-        }
-      } catch (e) {}
-    }, 20_000); // 20 giây thực hiện một lần là đủ để chống AFK
-  });
-
   bot.on('kicked', (reason) => {
     console.log('Bot bị đá khỏi server:', typeof reason === 'object' ? JSON.stringify(reason) : reason);
   });
