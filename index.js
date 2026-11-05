@@ -5,7 +5,7 @@ const CONFIG = {
   host: '9a3.mcsh.gg',
   port: 25565,
   username: 'Bot_AFK_247',
-  version: '1.8',
+  version: '1.21.11',
   checkTimeoutInterval: 60_000,
   reconnectDelay: 15_000, // Đợi 15 giây trước khi thử kết nối lại
 };
