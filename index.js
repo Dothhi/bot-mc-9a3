@@ -3,7 +3,7 @@ const http = require('http');
 
 const CONFIG = {
   host: '9a3.minehost.gg',
-  port: 19132,
+  port: 25565,
   username: 'Bot_AFK_247',
   version: '1.12',
   viewDistance: '2',
