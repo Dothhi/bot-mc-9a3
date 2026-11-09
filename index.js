@@ -5,7 +5,7 @@ const CONFIG = {
   host: '9a3.minehost.gg',
   port: 25565,
   username: 'Bot_AFK_247',
-  version: '1.12',
+  version: '1.16',
   viewDistance: '2',
   reconnectDelay: 15000,
 };
