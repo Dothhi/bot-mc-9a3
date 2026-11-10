@@ -2,8 +2,8 @@ const mineflayer = require('mineflayer');
 const http = require('http');
 
 const CONFIG = {
-  host: '9a3.minehost.gg',
-  port: 25565,
+  host: '9a3smp.aternos.me',
+  port: 25499,
   username: 'Bot_AFK_247',
   version: '1.16',
   viewDistance: '2',
