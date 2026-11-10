@@ -2,7 +2,7 @@ const mineflayer = require('mineflayer');
 const http = require('http');
 
 const CONFIG = {
-  host: '9a3.mcsh.gg',
+  host: '9a3.minehost.gg',
   port: 25565,
   username: 'Bot_AFK_247',
   version: '1.16',
