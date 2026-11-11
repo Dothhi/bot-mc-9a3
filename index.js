@@ -6,7 +6,7 @@ const CONFIG = {
   port: 25565,
   username: 'Bot_AFK_247',
   version: '1.20',
-  viewDistance: '2',
+  targetServer: 'survival', // <-- Đổi tên server con của bạn ở đây
   reconnectDelay: 15000,
 };
 
@@ -33,9 +33,17 @@ function createBot() {
     physicsEnabled: false,
   });
 
+  // Dùng .once nên lệnh này chỉ chạy 1 lần duy nhất lúc mới vào sảnh đầu tiên
   bot.once('spawn', () => {
-    console.log('Bot đã vào game');
+    console.log('Bot đã vào sảnh, chờ 3s để chuyển server...');
     if (bot.entities) bot.entities = {};
+
+    setTimeout(() => {
+      if (bot) {
+        bot.chat(`/server ${CONFIG.targetServer}`);
+        console.log(`Đã gửi lệnh: /server ${CONFIG.targetServer}`);
+      }
+    }, 3000);
   });
 
   bot.on('kicked', (reason) => {
