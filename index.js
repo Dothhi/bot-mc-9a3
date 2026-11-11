@@ -6,7 +6,7 @@ const CONFIG = {
   port: 25565,
   username: 'Bot_AFK_247',
   version: '1.20',
-  targetServer: 'survival', // <-- Đổi tên server con của bạn ở đây
+  targetServer: 'smp', // <-- Đổi tên server con của bạn ở đây
   reconnectDelay: 15000,
 };
 
