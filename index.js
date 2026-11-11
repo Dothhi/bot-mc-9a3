@@ -2,7 +2,7 @@ const mineflayer = require('mineflayer');
 const http = require('http');
 
 const CONFIG = {
-  host: '9a3.free.enzonic.com',
+  host: '9a3smp.mcsh.gg',
   port: 25565,
   username: 'Bot_AFK_247',
   version: '1.20',
