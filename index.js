@@ -1,271 +1,202 @@
 
 const mineflayer = require('mineflayer');
-const http = require('http');
 
 const CONFIG = {
   host: '9a3smp.mcsh.gg',
   port: 25565,
   version: false,
 
+  reconnect: 30000,
+
   bots: [
-    {
-      username: 'Bot_AFK_247',
-      target: 'smp'
-    },
-    {
-      username: 'Bot_AFK_247_2',
-      target: 'pvp'
-    }
-  ],
-
-  reconnectDelay: 15000,
-  maxReconnectDelay: 60000,
-
-  switchDelay: 3000,
-  healthPort: process.env.PORT || 3000
+    { username: 'Bot_AFK_247', server: 'smp' },
+    { username: 'Bot_AFK_247_2', server: 'pvp' }
+  ]
 };
 
-const managers = new Map();
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function log(name, message) {
-  console.log(
-    `[${new Date().toLocaleTimeString()}] [${name}] ${message}`
-  );
-}
+function startBot(config) {
+  let bot = null;
+  let retry = null;
+  let stopped = false;
+  let generation = 0;
+  let timers = [];
 
-function random(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-class AFKBot {
-  constructor(config) {
-    this.config = config;
-    this.bot = null;
-    this.connected = false;
-    this.stopping = false;
-    this.attempts = 0;
-    this.timers = new Set();
+  function log(message) {
+    console.log(`[${config.username}] ${message}`);
   }
 
-  later(callback, delay) {
+  function clearTimers() {
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+
+  function later(fn, ms) {
     const timer = setTimeout(() => {
-      this.timers.delete(timer);
-      callback();
-    }, delay);
+      timers = timers.filter(t => t !== timer);
+      fn();
+    }, ms);
 
-    this.timers.add(timer);
-    return timer;
+    timers.push(timer);
   }
 
-  clearTimers() {
-    for (const timer of this.timers) {
-      clearTimeout(timer);
-    }
+  function connect() {
+    if (stopped || bot) return;
 
-    this.timers.clear();
-  }
-
-  connect() {
-    if (this.stopping || this.bot) return;
-
-    log(this.config.username, 'Connecting to Velocity...');
+    const id = ++generation;
 
     try {
-      const bot = mineflayer.createBot({
+      log('Connecting...');
+
+      const current = mineflayer.createBot({
         host: CONFIG.host,
         port: CONFIG.port,
-        username: this.config.username,
-        version: CONFIG.version || undefined
+        username: config.username,
+        version: CONFIG.version || undefined,
+        viewDistance: 2,
+        checkTimeoutInterval: 60000
       });
 
-      this.bot = bot;
+      bot = current;
 
-      bot.once('spawn', () => {
-        if (this.bot !== bot) return;
+      current.once('spawn', async () => {
+        if (bot !== current || id !== generation) return;
 
-        this.connected = true;
-        this.attempts = 0;
+        log('Connected to Lobby');
 
-        log(this.config.username, 'Joined Lobby');
+        await sleep(3000);
 
-        this.later(() => {
-          if (this.bot !== bot || !this.connected) return;
+        if (bot !== current || id !== generation) return;
 
-          bot.chat(`/server ${this.config.target}`);
+        current.chat(`/server ${config.server}`);
+        log(`Joining ${config.server}`);
 
-          log(
-            this.config.username,
-            `Joining ${this.config.target}`
-          );
-        }, CONFIG.switchDelay);
-
-        this.startAFK(bot);
+        // Wait for backend transfer before AFK actions.
+        later(() => {
+          if (bot !== current || id !== generation) return;
+          startAFK(current, id);
+        }, 8000);
       });
 
-      bot.on('kicked', reason => {
-        log(
-          this.config.username,
-          `Kicked: ${JSON.stringify(reason)}`
-        );
+      current.on('kicked', reason => {
+        log(`Kicked: ${JSON.stringify(reason)}`);
       });
 
-      bot.on('error', err => {
-        log(this.config.username, `Error: ${err.message}`);
+      current.on('error', err => {
+        log(`Error: ${err.message}`);
       });
 
-      bot.once('end', reason => {
-        if (this.bot !== bot) return;
+      current.once('end', () => {
+        if (bot !== current || id !== generation) return;
 
-        log(
-          this.config.username,
-          `Disconnected: ${reason || 'Unknown'}`
-        );
+        bot = null;
+        clearTimers();
 
-        this.connected = false;
-        this.bot = null;
-        this.clearTimers();
+        log('Disconnected');
 
-        this.reconnect();
+        if (!stopped && !retry) {
+          retry = setTimeout(() => {
+            retry = null;
+            connect();
+          }, CONFIG.reconnect);
+        }
       });
 
     } catch (err) {
-      log(this.config.username, err.message);
-      this.bot = null;
-      this.reconnect();
+      log(`Connection error: ${err.message}`);
+      bot = null;
+
+      if (!retry && !stopped) {
+        retry = setTimeout(() => {
+          retry = null;
+          connect();
+        }, CONFIG.reconnect);
+      }
     }
   }
 
-  startAFK(bot) {
-    const swing = () => {
-      if (!this.connected || this.bot !== bot) return;
+  function startAFK(current, id) {
+    function valid() {
+      return bot === current && generation === id && !stopped;
+    }
+
+    function swing() {
+      if (!valid()) return;
 
       try {
-        bot.swingArm('right');
+        current.swingArm('right');
       } catch {}
 
-      this.later(swing, random(20000, 35000));
-    };
+      later(swing, 45000 + Math.random() * 15000);
+    }
 
-    const look = () => {
-      if (!this.connected || this.bot !== bot) return;
+    function look() {
+      if (!valid() || !current.entity) return;
 
       try {
-        const yaw = bot.entity.yaw +
+        const yaw = current.entity.yaw +
           (Math.random() - 0.5) * 0.8;
 
-        const pitch = Math.max(
-          -0.5,
-          Math.min(0.5,
-            bot.entity.pitch + (Math.random() - 0.5) * 0.3
-          )
-        );
+        const pitch = Math.max(-0.4, Math.min(
+          0.4,
+          current.entity.pitch + (Math.random() - 0.5) * 0.3
+        ));
 
-        bot.look(yaw, pitch, true);
+        current.look(yaw, pitch, true);
       } catch {}
 
-      this.later(look, random(30000, 50000));
-    };
+      later(look, 60000 + Math.random() * 30000);
+    }
 
-    const jump = () => {
-      if (!this.connected || this.bot !== bot) return;
+    function jump() {
+      if (!valid()) return;
 
       try {
-        // Chỉ nhảy khi đang đứng trên mặt đất.
-        if (bot.entity && bot.entity.onGround) {
-          bot.setControlState('jump', true);
+        if (current.entity && current.entity.onGround) {
+          current.setControlState('jump', true);
 
-          this.later(() => {
-            if (this.bot === bot) {
-              bot.setControlState('jump', false);
-            }
+          later(() => {
+            if (valid()) current.setControlState('jump', false);
           }, 150);
         }
       } catch {}
 
-      this.later(jump, random(60000, 90000));
-    };
+      later(jump, 90000 + Math.random() * 30000);
+    }
 
-    this.later(swing, random(5000, 10000));
-    this.later(look, random(10000, 15000));
-    this.later(jump, random(30000, 45000));
+    later(swing, 10000);
+    later(look, 15000);
+    later(jump, 30000);
   }
 
-  reconnect() {
-    if (this.stopping || this.reconnectTimer) return;
+  function stop() {
+    stopped = true;
+    generation++;
 
-    const delay = Math.min(
-      CONFIG.reconnectDelay * Math.pow(1.5, this.attempts++),
-      CONFIG.maxReconnectDelay
-    );
+    clearTimers();
+    clearTimeout(retry);
 
-    log(
-      this.config.username,
-      `Reconnect in ${Math.round(delay / 1000)}s`
-    );
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, delay);
-  }
-
-  stop() {
-    this.stopping = true;
-    this.connected = false;
-
-    clearTimeout(this.reconnectTimer);
-    this.clearTimers();
-
-    if (this.bot) {
-      this.bot.quit();
-      this.bot = null;
+    if (bot) {
+      bot.quit();
+      bot = null;
     }
   }
 
-  status() {
-    return {
-      username: this.config.username,
-      target: this.config.target,
-      status: this.connected ? 'online' : 'offline',
-      reconnectAttempts: this.attempts
-    };
-  }
+  connect();
+
+  return { stop };
 }
 
-// Start independent bots.
-for (const config of CONFIG.bots) {
-  const manager = new AFKBot(config);
-  managers.set(config.username, manager);
-  manager.connect();
-}
+// Start two independent bots.
+const bots = CONFIG.bots.map(startBot);
 
-// HTTP health check.
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'application/json'
-  });
-
-  res.end(JSON.stringify({
-    status: 'running',
-    bots: [...managers.values()].map(bot => bot.status()),
-    uptime: Math.floor(process.uptime())
-  }, null, 2));
-});
-
-server.listen(CONFIG.healthPort, '0.0.0.0', () => {
-  console.log(`Health check: port ${CONFIG.healthPort}`);
-});
-
-// Shutdown.
 function shutdown() {
-  for (const manager of managers.values()) {
-    manager.stop();
-  }
-
-  server.close();
+  bots.forEach(bot => bot.stop());
+  process.exit(0);
 }
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-console.log('Multi-Cluster AFK Manager started!');
+console.log('AFK Manager started: 2 bots');
