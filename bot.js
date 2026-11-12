@@ -1,30 +1,35 @@
 
 const mineflayer = require('mineflayer');
+const http = require('http');
 
 const CONFIG = {
   host: '9a3smp.mcsh.gg',
   port: 25565,
-  version: false,
-
   reconnect: 30000,
-
   bots: [
     { username: 'Bot_AFK_247', server: 'smp' },
     { username: 'Bot_AFK_247_2', server: 'pvp' }
   ]
 };
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const states = {};
 
-function startBot(config) {
+function startBot(cfg) {
   let bot = null;
   let retry = null;
   let stopped = false;
-  let generation = 0;
   let timers = [];
 
-  function log(message) {
-    console.log(`[${config.username}] ${message}`);
+  function log(msg) {
+    console.log(`[${cfg.username}] ${msg}`);
+  }
+
+  function later(fn, ms) {
+    const t = setTimeout(() => {
+      timers = timers.filter(x => x !== t);
+      fn();
+    }, ms);
+    timers.push(t);
   }
 
   function clearTimers() {
@@ -32,68 +37,55 @@ function startBot(config) {
     timers = [];
   }
 
-  function later(fn, ms) {
-    const timer = setTimeout(() => {
-      timers = timers.filter(t => t !== timer);
-      fn();
-    }, ms);
-
-    timers.push(timer);
-  }
-
   function connect() {
     if (stopped || bot) return;
 
-    const id = ++generation;
+    states[cfg.username] = 'connecting';
 
     try {
-      log('Connecting...');
-
       const current = mineflayer.createBot({
         host: CONFIG.host,
         port: CONFIG.port,
-        username: config.username,
-        version: CONFIG.version || undefined,
-        viewDistance: 2,
+        username: cfg.username,
+        viewDistance: 'tiny',
         checkTimeoutInterval: 60000
       });
 
       bot = current;
 
-      current.once('spawn', async () => {
-        if (bot !== current || id !== generation) return;
+      current.once('spawn', () => {
+        if (bot !== current) return;
 
-        log('Connected to Lobby');
+        states[cfg.username] = 'switching';
+        log('Connected');
 
-        await sleep(3000);
-
-        if (bot !== current || id !== generation) return;
-
-        current.chat(`/server ${config.server}`);
-        log(`Joining ${config.server}`);
-
-        // Wait for backend transfer before AFK actions.
         later(() => {
-          if (bot !== current || id !== generation) return;
-          startAFK(current, id);
-        }, 8000);
+          if (bot !== current) return;
+
+          current.chat(`/server ${cfg.server}`);
+          log(`Joining ${cfg.server}`);
+
+          states[cfg.username] = `command_sent:${cfg.server}`;
+
+          later(() => {
+            if (bot !== current) return;
+            startAFK(current);
+          }, 8000);
+        }, 3000);
       });
 
       current.on('kicked', reason => {
         log(`Kicked: ${JSON.stringify(reason)}`);
       });
 
-      current.on('error', err => {
-        log(`Error: ${err.message}`);
-      });
+      current.on('error', err => log(err.message));
 
       current.once('end', () => {
-        if (bot !== current || id !== generation) return;
+        if (bot !== current) return;
 
         bot = null;
+        states[cfg.username] = 'disconnected';
         clearTimers();
-
-        log('Disconnected');
 
         if (!stopped && !retry) {
           retry = setTimeout(() => {
@@ -104,30 +96,25 @@ function startBot(config) {
       });
 
     } catch (err) {
-      log(`Connection error: ${err.message}`);
+      log(err.message);
       bot = null;
+      states[cfg.username] = 'error';
 
-      if (!retry && !stopped) {
-        retry = setTimeout(() => {
-          retry = null;
-          connect();
-        }, CONFIG.reconnect);
-      }
+      retry = setTimeout(() => {
+        retry = null;
+        connect();
+      }, CONFIG.reconnect);
     }
   }
 
-  function startAFK(current, id) {
+  function startAFK(current) {
     function valid() {
-      return bot === current && generation === id && !stopped;
+      return bot === current && !stopped;
     }
 
     function swing() {
       if (!valid()) return;
-
-      try {
-        current.swingArm('right');
-      } catch {}
-
+      try { current.swingArm('right'); } catch {}
       later(swing, 45000 + Math.random() * 15000);
     }
 
@@ -135,15 +122,11 @@ function startBot(config) {
       if (!valid() || !current.entity) return;
 
       try {
-        const yaw = current.entity.yaw +
-          (Math.random() - 0.5) * 0.8;
-
-        const pitch = Math.max(-0.4, Math.min(
-          0.4,
-          current.entity.pitch + (Math.random() - 0.5) * 0.3
-        ));
-
-        current.look(yaw, pitch, true);
+        current.look(
+          current.entity.yaw + (Math.random() - 0.5) * 0.8,
+          current.entity.pitch + (Math.random() - 0.5) * 0.3,
+          true
+        );
       } catch {}
 
       later(look, 60000 + Math.random() * 30000);
@@ -153,9 +136,8 @@ function startBot(config) {
       if (!valid()) return;
 
       try {
-        if (current.entity && current.entity.onGround) {
+        if (current.entity?.onGround) {
           current.setControlState('jump', true);
-
           later(() => {
             if (valid()) current.setControlState('jump', false);
           }, 150);
@@ -165,6 +147,7 @@ function startBot(config) {
       later(jump, 90000 + Math.random() * 30000);
     }
 
+    states[cfg.username] = 'AFK';
     later(swing, 10000);
     later(look, 15000);
     later(jump, 30000);
@@ -172,31 +155,43 @@ function startBot(config) {
 
   function stop() {
     stopped = true;
-    generation++;
-
     clearTimers();
     clearTimeout(retry);
-
-    if (bot) {
-      bot.quit();
-      bot = null;
-    }
+    if (bot) bot.quit();
+    bot = null;
+    states[cfg.username] = 'stopped';
   }
 
   connect();
-
   return { stop };
 }
 
-// Start two independent bots.
+// HTTP health server
+http.createServer((req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'application/json'
+  });
+
+  res.end(JSON.stringify({
+    service: 'AFK Manager',
+    bots: Object.fromEntries(
+      Object.entries(states).map(([name, status]) => [
+        name,
+        status
+      ])
+    )
+  }));
+}).listen(process.env.PORT || 3000, '0.0.0.0');
+
+// Start bots
 const bots = CONFIG.bots.map(startBot);
 
 function shutdown() {
-  bots.forEach(bot => bot.stop());
+  bots.forEach(b => b.stop());
   process.exit(0);
 }
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-console.log('AFK Manager started: 2 bots');
+console.log('AFK Manager started');
