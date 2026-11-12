@@ -8,7 +8,6 @@ const CONFIG = {
   version: '1.20',
   targetServer: 'smp', // <-- Đổi tên server con của bạn ở đây
   reconnectDelay: 15000,
-  maxSessionDuration: 20 * 60 * 1000, // 20 phút tính bằng mili-giây
 };
 
 let bot = null;
