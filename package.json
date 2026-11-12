@@ -1,15 +1,13 @@
+
 {
-  "name": "bot-mc",
+  "name": "multi-afk-bot",
   "version": "1.0.0",
-  "description": "Minecraft AFK Bot",
-  "main": "index.js",
+  "private": true,
+  "main": "bot.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node bot.js"
   },
   "dependencies": {
-    "mineflayer": "^4.20.0"
-  },
-  "engines": {
-    "node": ">=18.x"
+    "mineflayer": "^4.33.0"
   }
 }
