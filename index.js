@@ -8,10 +8,12 @@ const CONFIG = {
   version: '1.20',
   targetServer: 'smp', // <-- Đổi tên server con của bạn ở đây
   reconnectDelay: 15000,
+  maxSessionDuration: 20 * 60 * 1000, // 20 phút tính bằng mili-giây
 };
 
 let bot = null;
 let reconnectTimeout = null;
+let sessionTimeout = null; // Biến lưu bộ đếm 20 phút
 
 function createBot() {
   if (bot) {
@@ -20,6 +22,12 @@ function createBot() {
       bot.quit();
     } catch {}
     bot = null;
+  }
+
+  // Xóa bộ đếm 20p cũ nếu có
+  if (sessionTimeout) {
+    clearTimeout(sessionTimeout);
+    sessionTimeout = null;
   }
 
   console.log('Đang kết nối...');
@@ -44,6 +52,16 @@ function createBot() {
         console.log(`Đã gửi lệnh: /server ${CONFIG.targetServer}`);
       }
     }, 3000);
+
+    // Bắt đầu đếm ngược 20 phút sau khi bot spawn thành công để tự thoát và vào lại
+    sessionTimeout = setTimeout(() => {
+      console.log('Đã chạy đủ 20 phút, tiến hành thoát để kết nối lại...');
+      if (bot) {
+        try {
+          bot.quit();
+        } catch {}
+      }
+    }, CONFIG.maxSessionDuration);
   });
 
   bot.on('kicked', (reason) => {
@@ -56,6 +74,11 @@ function createBot() {
 
   bot.on('end', () => {
     console.log('Mất kết nối, sẽ vào lại sau 15s...');
+    // Dọn dẹp bộ đếm phiên khi bot ngắt kết nối
+    if (sessionTimeout) {
+      clearTimeout(sessionTimeout);
+      sessionTimeout = null;
+    }
     scheduleReconnect();
   });
 }
