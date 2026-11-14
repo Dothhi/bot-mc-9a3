@@ -7,7 +7,7 @@ const CONFIG = {
   port: 25565,
   reconnect: 0000,
   bots: [
-    { username: 'Bot_AFK_247', server: 'pvp' },
+    { username: 'Bot_AFK_247', server: 'lobby' },
     { username: 'Bot_AFK_247_2', server: 'smp' }
   ]
 };
